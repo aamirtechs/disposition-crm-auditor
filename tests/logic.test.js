@@ -13,3 +13,15 @@ test("DNC in active cadence is a STOP remove-from-cadence signal", () => { const
 test("do not call wording also triggers the STOP signal", () => { const r=L.audit([{contact_id:"C1",agent:"Agent A",disposition:"Do Not Call",duration_min:"1",timestamp:"t"}], [{contact_id:"C1",note_present:"yes",enrollment_record:"no",callback_task_date:"",in_active_cadence:"yes"}], cfg); assert.ok(r.exceptions.some(e=>e.severity==="STOP")); });
 test("orphans are listed in both directions", () => { const r=L.audit(disp, [{contact_id:"C9",note_present:"yes",enrollment_record:"no",callback_task_date:"",in_active_cadence:"no"}], cfg); assert.ok(r.exceptions.some(e=>e.type==="orphan_disposition")); assert.ok(r.exceptions.some(e=>e.type==="orphan_crm_record")); });
 test("agent rollup counts and exception CSV carries evidence", () => { const r=L.audit(disp, [{contact_id:"C1",note_present:"no",enrollment_record:"no",callback_task_date:"",in_active_cadence:"yes"}], cfg); assert.equal(r.rollup[0].agent,"Agent A"); assert.ok(r.rollup[0].exceptions>=2); const csv=L.toExceptionCSV(r.exceptions); assert.ok(csv.includes("contact_id")); assert.ok(csv.includes("C1")); });
+test("audit date ages orphan records in both directions", () => {
+  const disp = [{ contact_id: "C1", agent: "Agent A", disposition: "callback", duration_min: "2", timestamp: "2026-01-01 10:00" }];
+  const crm = [{ contact_id: "C2", timestamp: "2026-01-10 09:00" }];
+  const r = L.audit(disp, crm, { ...cfg, auditDate: "2026-01-31" });
+  const dOrphan = r.exceptions.find(e => e.type === "orphan_disposition");
+  const cOrphan = r.exceptions.find(e => e.type === "orphan_crm_record");
+  assert.ok(dOrphan.action.includes("Unmatched for 30 day(s)"));
+  assert.ok(cOrphan.action.includes("Unmatched for 21 day(s)"));
+  // no audit date: no ageing text
+  const plain = L.audit(disp, crm, cfg);
+  assert.ok(!plain.exceptions.find(e => e.type === "orphan_disposition").action.includes("Unmatched"));
+});

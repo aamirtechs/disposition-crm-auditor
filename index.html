@@ -63,6 +63,7 @@ C9,yes,no,,no</textarea>
 <div class="row">
 <div><label for="longMin">Long-call threshold (minutes)</label><input type="number" id="longMin" value="5"></div>
 <div><label for="cbTerms">Callback wording (comma separated)</label><input type="text" id="cbTerms" value="callback"></div>
+<div><label for="auditDate">Audit date (ages the orphans)</label><input type="date" id="auditDate"></div>
 </div>
 <button class="btn-run" id="runBtn">Run audit</button>
 <div id="summary" class="small" style="margin-top:12px"></div><div id="results"></div><div id="rollup"></div>
@@ -79,7 +80,7 @@ C9,yes,no,,no</textarea>
 <script>
 var L=window.DispositionCrmAuditor, last=null;
 function esc(s){return String(s).replace(/</g,"&lt;");}
-function run(){ var cfg={longCallThreshold:Number(document.getElementById("longMin").value)||5, callbackTerms:document.getElementById("cbTerms").value.split(",").map(function(x){return x.trim();}).filter(Boolean)};
+function run(){ var cfg={longCallThreshold:Number(document.getElementById("longMin").value)||5, callbackTerms:document.getElementById("cbTerms").value.split(",").map(function(x){return x.trim();}).filter(Boolean), auditDate:document.getElementById("auditDate").value||null};
  last=L.audit(L.parseCSV(document.getElementById("dispInput").value), L.parseCSV(document.getElementById("crmInput").value), cfg);
  document.getElementById("summary").textContent=last.summary.dispositions+" dispositions, "+last.summary.crmRecords+" CRM records, "+last.summary.exceptions+" exceptions, "+last.summary.stopSignals+" STOP signals.";
  var h="<table><tr><th>Contact</th><th>Agent</th><th>Type</th><th>Severity</th><th>Action</th><th>Evidence</th></tr>";
