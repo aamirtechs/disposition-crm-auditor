@@ -80,8 +80,13 @@ C9,yes,no,,no</textarea>
 var L=window.DispositionCrmAuditor, last=null;
 function esc(s){return String(s).replace(/</g,"&lt;");}
 function run(){ var cfg={longCallThreshold:Number(document.getElementById("longMin").value)||5, callbackTerms:document.getElementById("cbTerms").value.split(",").map(function(x){return x.trim();}).filter(Boolean)};
- last=L.audit(L.parseCSV(document.getElementById("dispInput").value), L.parseCSV(document.getElementById("crmInput").value), cfg);
- document.getElementById("summary").textContent=last.summary.dispositions+" dispositions, "+last.summary.crmRecords+" CRM records, "+last.summary.exceptions+" exceptions, "+last.summary.stopSignals+" STOP signals.";
+ var dispText=document.getElementById("dispInput").value, crmText=document.getElementById("crmInput").value;
+ var rawHead=String(dispText).split(/\r?\n/)[0].split(",").map(function(h){return h.replace(/^"|"$/g,"").trim();});
+ var map=L.mapHeaders(rawHead);
+ var mapped=Object.keys(map.mapping).map(function(f){return esc(map.mapping[f])+" → "+f;}).join(", ");
+ var prefix=(mapped?("Headers: "+mapped+". "):"")+(map.unrecognized.length?("Unmapped: "+map.unrecognized.map(esc).join(", ")+". "):"");
+ last=L.audit(L.parseCSV(dispText), L.parseCSV(crmText), cfg);
+ document.getElementById("summary").textContent=prefix+last.summary.dispositions+" dispositions, "+last.summary.crmRecords+" CRM records, "+last.summary.exceptions+" exceptions, "+last.summary.stopSignals+" STOP signals.";
  var h="<table><tr><th>Contact</th><th>Agent</th><th>Type</th><th>Severity</th><th>Action</th><th>Evidence</th></tr>";
  last.exceptions.forEach(function(e){h+="<tr><td>"+esc(e.contactId)+"</td><td>"+esc(e.agent)+"</td><td>"+esc(e.type)+"</td><td>"+(e.severity==="STOP"?'<span class="stop">STOP</span>':'<span class="flag">'+esc(e.severity)+"</span>")+"</td><td>"+esc(e.action)+"</td><td>"+esc(e.evidence)+"</td></tr>";});
  document.getElementById("results").innerHTML=h+"</table>";
