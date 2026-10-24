@@ -29,6 +29,7 @@ function yes(v) { return String(v || "").trim().toLowerCase() === "yes"; }
 function norm(v) { return String(v || "").trim().toLowerCase(); }
 function audit(dispositions, crmRows, config) {
   const cfg = config || {};
+  const auditDate = cfg.auditDate ? parseDate(cfg.auditDate) : null;
   const longThreshold = cfg.longCallThreshold !== undefined ? Number(cfg.longCallThreshold) : 5;
   const callbackTerms = (cfg.callbackTerms && cfg.callbackTerms.length ? cfg.callbackTerms : ["callback"]).map(t => String(t).toLowerCase());
   const crmById = {}; (crmRows || []).forEach(r => { crmById[r.contact_id] = r; });
@@ -37,14 +38,27 @@ function audit(dispositions, crmRows, config) {
     dispIds[d.contact_id] = true;
     const crm = crmById[d.contact_id];
     const disp = norm(d.disposition);
-    if (!crm) { exceptions.push({ contactId: d.contact_id, agent: d.agent || "", type: "orphan_disposition", severity: "medium", action: "Create or link the CRM record for this contact.", evidence: "Disposition '" + d.disposition + "' by " + (d.agent || "") + " at " + (d.timestamp || "") + " has no matching CRM record." }); return; }
+    if (!crm) {
+      const age = auditDate ? daysBetween(String(d.timestamp || "").slice(0, 10), fmtDate(auditDate)) : null;
+      exceptions.push({ contactId: d.contact_id, agent: d.agent || "", type: "orphan_disposition", severity: "medium",
+        action: "Create or link the CRM record for this contact." + (age !== null ? " Unmatched for " + age + " day(s)." : ""),
+        evidence: "Disposition '" + d.disposition + "' by " + (d.agent || "") + " at " + (d.timestamp || "") + " has no matching CRM record." });
+      return;
+    }
     const duration = num(d.duration_min) || 0;
     if (duration > longThreshold && !yes(crm.note_present)) exceptions.push({ contactId: d.contact_id, agent: d.agent || "", type: "long_call_no_note", severity: "high", action: "Add a CRM note covering this interaction.", evidence: "Duration " + duration + " min exceeds " + longThreshold + " min threshold and note_present is not yes." });
     if (disp === "enrolled" && !yes(crm.enrollment_record)) exceptions.push({ contactId: d.contact_id, agent: d.agent || "", type: "enrolled_no_enrollment_record", severity: "high", action: "Create the enrollment record or correct the disposition.", evidence: "Disposition is enrolled but enrollment_record is not yes." });
     if (callbackTerms.some(t => disp.includes(t)) && !crm.callback_task_date) exceptions.push({ contactId: d.contact_id, agent: d.agent || "", type: "callback_no_task", severity: "high", action: "Schedule the promised callback task.", evidence: "Disposition '" + d.disposition + "' indicates a promised callback but callback_task_date is blank." });
     if ((disp === "dnc" || disp === "do not call") && yes(crm.in_active_cadence)) exceptions.push({ contactId: d.contact_id, agent: d.agent || "", type: "dnc_in_active_cadence", severity: "STOP", action: "Remove from cadence immediately. This is a stop signal and must not be overridden.", evidence: "Disposition is '" + d.disposition + "' while in_active_cadence is yes." });
   });
-  (crmRows || []).forEach(r => { if (!dispIds[r.contact_id]) exceptions.push({ contactId: r.contact_id, agent: "", type: "orphan_crm_record", severity: "medium", action: "Link this CRM record to a disposition or close it out.", evidence: "CRM activity for contact " + r.contact_id + " has no matching disposition." }); });
+  (crmRows || []).forEach(r => {
+    if (dispIds[r.contact_id]) return;
+    // The CRM row's own timestamp, or the row's last-activity field, dates the orphan.
+    const age = auditDate ? daysBetween(String(r.last_activity || r.timestamp || "").slice(0, 10), fmtDate(auditDate)) : null;
+    exceptions.push({ contactId: r.contact_id, agent: "", type: "orphan_crm_record", severity: "medium",
+      action: "Link this CRM record to a disposition or close it out." + (age !== null ? " Unmatched for " + age + " day(s)." : ""),
+      evidence: "CRM activity for contact " + r.contact_id + " has no matching disposition." });
+  });
   const rollup = {};
   (dispositions || []).forEach(d => { const a = d.agent || "Unknown"; rollup[a] = rollup[a] || { agent: a, total: 0, exceptions: 0 }; rollup[a].total++; });
   exceptions.forEach(e => { if (e.agent && rollup[e.agent]) rollup[e.agent].exceptions++; });
