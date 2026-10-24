@@ -12,4 +12,26 @@ test("promised callback with no task is flagged, configurable terms work", () =>
 test("DNC in active cadence is a STOP remove-from-cadence signal", () => { const r=L.audit([{contact_id:"C1",agent:"Agent A",disposition:"dnc",duration_min:"2",timestamp:"t"}], [{contact_id:"C1",note_present:"yes",enrollment_record:"no",callback_task_date:"",in_active_cadence:"yes"}], cfg); const e=r.exceptions.find(x=>x.type==="dnc_in_active_cadence"); assert.equal(e.severity,"STOP"); assert.ok(e.action.includes("Remove from cadence")); assert.equal(r.summary.stopSignals,1); });
 test("do not call wording also triggers the STOP signal", () => { const r=L.audit([{contact_id:"C1",agent:"Agent A",disposition:"Do Not Call",duration_min:"1",timestamp:"t"}], [{contact_id:"C1",note_present:"yes",enrollment_record:"no",callback_task_date:"",in_active_cadence:"yes"}], cfg); assert.ok(r.exceptions.some(e=>e.severity==="STOP")); });
 test("orphans are listed in both directions", () => { const r=L.audit(disp, [{contact_id:"C9",note_present:"yes",enrollment_record:"no",callback_task_date:"",in_active_cadence:"no"}], cfg); assert.ok(r.exceptions.some(e=>e.type==="orphan_disposition")); assert.ok(r.exceptions.some(e=>e.type==="orphan_crm_record")); });
+test("Salesforce-style headers are mapped to the generic columns", () => {
+  const csv = "Contact ID 18,Call Disposition,Call Duration in Minutes,Agent Name\n003xx0000G,Callback,6,Agent A";
+  const { rows, mapping } = L.applyHeaderAliases(L.parseCSV(csv));
+  assert.equal(rows[0].contact_id, "003xx0000G");
+  assert.equal(rows[0].disposition, "Callback");
+  assert.equal(rows[0].duration_min, "6");
+  assert.equal(rows[0].agent, "Agent A");
+  assert.deepEqual(mapping, { contact_id_18: "contact_id", call_disposition: "disposition", call_duration_in_minutes: "duration_min", agent_name: "agent" });
+  assert.ok(L.aliasReport(mapping).includes("Mapped 'call disposition' to disposition"));
+});
+test("already-generic headers pass through untouched", () => {
+  const { rows, mapping } = L.applyHeaderAliases(L.parseCSV("contact_id,disposition\nC1,enrolled"));
+  assert.equal(rows[0].disposition, "enrolled");
+  assert.equal(Object.keys(mapping).length, 0);
+});
+test("audit works end to end on a Salesforce-style export", () => {
+  const disp = L.applyHeaderAliases(L.parseCSV("Contact ID 18,Call Result,Call Duration in Minutes,Agent Name,Call Date Time\n003xx0000G,Enrolled,12,Agent A,2026-01-01 10:00")).rows;
+  const crm = L.applyHeaderAliases(L.parseCSV("Contact ID 18,Has Enrollment,Has Note,Next Task Date,Active Cadence\n003xx0000G,no,no,,yes")).rows;
+  const r = L.audit(disp, crm, cfg);
+  assert.ok(r.exceptions.some(e => e.type === "enrolled_no_enrollment_record"));
+  assert.ok(r.exceptions.some(e => e.type === "long_call_no_note"));
+});
 test("agent rollup counts and exception CSV carries evidence", () => { const r=L.audit(disp, [{contact_id:"C1",note_present:"no",enrollment_record:"no",callback_task_date:"",in_active_cadence:"yes"}], cfg); assert.equal(r.rollup[0].agent,"Agent A"); assert.ok(r.rollup[0].exceptions>=2); const csv=L.toExceptionCSV(r.exceptions); assert.ok(csv.includes("contact_id")); assert.ok(csv.includes("C1")); });

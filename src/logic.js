@@ -26,6 +26,38 @@ function fmtDate(d) { return d ? d.toISOString().slice(0, 10) : ""; }
 function daysBetween(a, b) { const da = parseDate(a), db = parseDate(b); if (!da || !db) return null; return Math.round((db.getTime() - da.getTime()) / 86400000); }
 
 function yes(v) { return String(v || "").trim().toLowerCase() === "yes"; }
+// Common Salesforce-style export headers, mapped onto the generic columns this tool reads.
+// Keys are compared after parseCSV normalises headers (lowercase, underscores).
+const COLUMN_ALIASES = {
+  contact_id: ["contact_id", "contactid", "contact_id_18", "contact_id_15", "sf_contact_id"],
+  agent: ["agent", "agent_name", "owner_name", "call_agent", "assigned_agent"],
+  disposition: ["disposition", "call_disposition", "call_result", "call_outcome", "result"],
+  duration_min: ["duration_min", "duration_in_minutes", "call_duration_in_minutes", "duration_minutes"],
+  timestamp: ["timestamp", "call_date_time", "call_datetime", "activity_date_time", "activity_datetime", "call_start_time", "created_date"],
+  note_present: ["note_present", "has_note", "note_added"],
+  enrollment_record: ["enrollment_record", "enrollment_created", "has_enrollment"],
+  callback_task_date: ["callback_task_date", "callback_date", "next_task_date", "task_due_date"],
+  in_active_cadence: ["in_active_cadence", "active_cadence", "in_cadence"],
+};
+function applyHeaderAliases(rows) {
+  // returns the rows with generic column names plus the mapping that was applied
+  const reverse = {};
+  for (const col of Object.keys(COLUMN_ALIASES)) for (const n of COLUMN_ALIASES[col]) reverse[n] = col;
+  const mapping = {};
+  const out = (rows || []).map(r => {
+    const o = {};
+    for (const k of Object.keys(r)) {
+      const col = reverse[k];
+      if (col && col !== k) mapping[k] = col;
+      o[col || k] = r[k];
+    }
+    return o;
+  });
+  return { rows: out, mapping };
+}
+function aliasReport(mapping) {
+  return Object.keys(mapping).sort().map(k => "Mapped '" + k.replace(/_/g, " ") + "' to " + mapping[k]).join("\n");
+}
 function norm(v) { return String(v || "").trim().toLowerCase(); }
 function audit(dispositions, crmRows, config) {
   const cfg = config || {};
@@ -51,6 +83,6 @@ function audit(dispositions, crmRows, config) {
   return { exceptions, rollup: Object.values(rollup), summary: { dispositions: (dispositions||[]).length, crmRecords: (crmRows||[]).length, exceptions: exceptions.length, stopSignals: exceptions.filter(e => e.severity === "STOP").length } };
 }
 function toExceptionCSV(exceptions) { return toCSV(["contact_id","agent","type","severity","action","evidence"], (exceptions||[]).map(e => ({ contact_id: e.contactId, agent: e.agent, type: e.type, severity: e.severity, action: e.action, evidence: e.evidence }))); }
-const api = { parseCSV, audit, toExceptionCSV };
+const api = { COLUMN_ALIASES, applyHeaderAliases, aliasReport, parseCSV, audit, toExceptionCSV };
 if (typeof module !== "undefined" && module.exports) { module.exports = api; }
 if (typeof window !== "undefined") { window.DispositionCrmAuditor = api; }

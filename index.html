@@ -80,8 +80,12 @@ C9,yes,no,,no</textarea>
 var L=window.DispositionCrmAuditor, last=null;
 function esc(s){return String(s).replace(/</g,"&lt;");}
 function run(){ var cfg={longCallThreshold:Number(document.getElementById("longMin").value)||5, callbackTerms:document.getElementById("cbTerms").value.split(",").map(function(x){return x.trim();}).filter(Boolean)};
- last=L.audit(L.parseCSV(document.getElementById("dispInput").value), L.parseCSV(document.getElementById("crmInput").value), cfg);
- document.getElementById("summary").textContent=last.summary.dispositions+" dispositions, "+last.summary.crmRecords+" CRM records, "+last.summary.exceptions+" exceptions, "+last.summary.stopSignals+" STOP signals.";
+ var dispMapped=L.applyHeaderAliases(L.parseCSV(document.getElementById("dispInput").value));
+ var crmMapped=L.applyHeaderAliases(L.parseCSV(document.getElementById("crmInput").value));
+ var mapped=Object.keys(dispMapped.mapping).length+Object.keys(crmMapped.mapping).length;
+ document.getElementById("summary").textContent=mapped?("Header mapping applied: "+L.aliasReport(dispMapped.mapping)+(Object.keys(crmMapped.mapping).length?" | "+L.aliasReport(crmMapped.mapping):"")):"";
+ last=L.audit(dispMapped.rows, crmMapped.rows, cfg);
+ document.getElementById("summary").textContent+=(document.getElementById("summary").textContent?"\n":"")+last.summary.dispositions+" dispositions, "+last.summary.crmRecords+" CRM records, "+last.summary.exceptions+" exceptions, "+last.summary.stopSignals+" STOP signals.";
  var h="<table><tr><th>Contact</th><th>Agent</th><th>Type</th><th>Severity</th><th>Action</th><th>Evidence</th></tr>";
  last.exceptions.forEach(function(e){h+="<tr><td>"+esc(e.contactId)+"</td><td>"+esc(e.agent)+"</td><td>"+esc(e.type)+"</td><td>"+(e.severity==="STOP"?'<span class="stop">STOP</span>':'<span class="flag">'+esc(e.severity)+"</span>")+"</td><td>"+esc(e.action)+"</td><td>"+esc(e.evidence)+"</td></tr>";});
  document.getElementById("results").innerHTML=h+"</table>";
