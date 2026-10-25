@@ -14,10 +14,45 @@ function parseCSV(text) {
   if (field !== "" || row.length) { row.push(field); rows.push(row); }
   const clean = rows.filter(r => r.some(v => String(v).trim() !== ""));
   if (!clean.length) return [];
-  const headers = clean[0].map(h => String(h).trim().toLowerCase().replace(/\s+/g, "_"));
+  const rawHeaders = clean[0].map(h => String(h).trim());
+  const { mapping } = mapHeaders(rawHeaders);
+  const headers = rawHeaders.map((h, idx) => {
+    for (const [field, raw] of Object.entries(mapping)) if (rawHeaders.indexOf(raw) === idx) return field;
+    return h.toLowerCase().replace(/\s+/g, "_");
+  });
   return clean.slice(1).map(r => { const o = {}; headers.forEach((h, idx) => { o[h] = r[idx] === undefined ? "" : String(r[idx]).trim(); }); return o; });
 }
 function csvEscape(v) { const s = v === null || v === undefined ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+
+// Salesforce export headers map onto the generic audit columns.
+const HEADER_ALIASES = {
+  contact_id: ["contact_id", "contactid", "contact id", "id", "contact"],
+  agent: ["agent", "assigned_to", "assigned to", "owner", "owner_name", "owner name", "user", "user_name"],
+  disposition: ["disposition", "call_disposition", "call disposition", "status", "call_status", "call status"],
+  timestamp: ["timestamp", "date", "call_date", "call date", "activity_date", "activity date", "createddate", "created date"],
+  duration_min: ["duration_min", "duration min", "duration", "call_duration", "call duration", "duration_minutes"],
+  note_present: ["note_present", "note present", "has_note", "has note", "notes_present", "notes present", "note"],
+  enrollment_record: ["enrollment_record", "enrollment record", "enrolled", "enrollment_created"],
+  callback_task_date: ["callback_task_date", "callback task date", "callback_date", "callback date", "task_date", "task date"],
+  in_active_cadence: ["in_active_cadence", "in active cadence", "active_cadence", "active cadence", "cadence"]
+};
+
+function mapHeaders(rawHeaders) {
+  const mapping = {}; const unrecognized = [];
+  const used = new Set();
+  (rawHeaders || []).forEach((h) => {
+    const key = String(h).trim().toLowerCase().replace(/\s+/g, "_");
+    for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+      if (used.has(field)) continue;
+      if (aliases.indexOf(key) !== -1 || aliases.indexOf(String(h).trim().toLowerCase()) !== -1) {
+        mapping[field] = h; used.add(field); return;
+      }
+    }
+    unrecognized.push(h);
+  });
+  return { mapping, unrecognized };
+}
+
 function toCSV(headers, rows) { return [headers.join(",")].concat(rows.map(r => headers.map(h => csvEscape(r[h])).join(","))).join("\n") + "\n"; }
 function num(v) { if (v === "" || v === null || v === undefined) return null; const n = Number(String(v).replace(/[$,]/g, "")); return isFinite(n) ? n : null; }
 function round2(n) { return Math.round(n * 100) / 100; }
@@ -51,6 +86,6 @@ function audit(dispositions, crmRows, config) {
   return { exceptions, rollup: Object.values(rollup), summary: { dispositions: (dispositions||[]).length, crmRecords: (crmRows||[]).length, exceptions: exceptions.length, stopSignals: exceptions.filter(e => e.severity === "STOP").length } };
 }
 function toExceptionCSV(exceptions) { return toCSV(["contact_id","agent","type","severity","action","evidence"], (exceptions||[]).map(e => ({ contact_id: e.contactId, agent: e.agent, type: e.type, severity: e.severity, action: e.action, evidence: e.evidence }))); }
-const api = { parseCSV, audit, toExceptionCSV };
+const api = { parseCSV, audit, toExceptionCSV, mapHeaders, HEADER_ALIASES };
 if (typeof module !== "undefined" && module.exports) { module.exports = api; }
 if (typeof window !== "undefined") { window.DispositionCrmAuditor = api; }

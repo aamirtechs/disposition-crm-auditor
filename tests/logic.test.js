@@ -13,3 +13,28 @@ test("DNC in active cadence is a STOP remove-from-cadence signal", () => { const
 test("do not call wording also triggers the STOP signal", () => { const r=L.audit([{contact_id:"C1",agent:"Agent A",disposition:"Do Not Call",duration_min:"1",timestamp:"t"}], [{contact_id:"C1",note_present:"yes",enrollment_record:"no",callback_task_date:"",in_active_cadence:"yes"}], cfg); assert.ok(r.exceptions.some(e=>e.severity==="STOP")); });
 test("orphans are listed in both directions", () => { const r=L.audit(disp, [{contact_id:"C9",note_present:"yes",enrollment_record:"no",callback_task_date:"",in_active_cadence:"no"}], cfg); assert.ok(r.exceptions.some(e=>e.type==="orphan_disposition")); assert.ok(r.exceptions.some(e=>e.type==="orphan_crm_record")); });
 test("agent rollup counts and exception CSV carries evidence", () => { const r=L.audit(disp, [{contact_id:"C1",note_present:"no",enrollment_record:"no",callback_task_date:"",in_active_cadence:"yes"}], cfg); assert.equal(r.rollup[0].agent,"Agent A"); assert.ok(r.rollup[0].exceptions>=2); const csv=L.toExceptionCSV(r.exceptions); assert.ok(csv.includes("contact_id")); assert.ok(csv.includes("C1")); });
+
+test("mapHeaders maps Salesforce-shaped headers to generic columns", () => {
+  const { mapping, unrecognized } = L.mapHeaders([
+    "Contact ID", "Assigned To", "Call Disposition", "Call Date", "Duration", "Has Note",
+  ]);
+  assert.equal(mapping.contact_id, "Contact ID");
+  assert.equal(mapping.agent, "Assigned To");
+  assert.equal(mapping.disposition, "Call Disposition");
+  assert.equal(mapping.timestamp, "Call Date");
+  assert.equal(mapping.duration_min, "Duration");
+  assert.equal(mapping.note_present, "Has Note");
+  assert.equal(unrecognized.length, 0);
+});
+
+test("parseCSV applies aliases so audit sees generic fields", () => {
+  const rows = L.parseCSV(
+    "Contact ID,Assigned To,Call Disposition,Duration,Has Note\n" +
+      "c1,alex,callback,12,yes\n",
+  );
+  assert.equal(rows[0].contact_id, "c1");
+  assert.equal(rows[0].agent, "alex");
+  assert.equal(rows[0].disposition, "callback");
+  assert.equal(rows[0].duration_min, "12");
+  assert.equal(rows[0].note_present, "yes");
+});
